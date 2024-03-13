@@ -1,0 +1,44 @@
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'this just rebuilds the bdf and adds coloring.
+'have to do it in a .gas because it doesn't seem to work in a .g2u
+
+F.Intrinsic.Control.If(V.Passed.GABVAR, =, 1)
+	F.Intrinsic.Control.CallSub(Coloring)
+	V.Passed.GABVAR.Set("")
+F.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Coloring.Start
+V.Local.i.Declare(Long)
+V.Local.sSeq.Declare(String)
+V.Local.sWriteRow.Declare(String)
+V.Local.sReadRow.Declare(String)
+V.Local.sRR.Declare(String)
+V.Local.iColor.Declare(Long)
+V.Local.sReady.Declare(String)
+V.Local.iRowCnt.Declare(String)
+
+V.Local.iColor.Set(65280)
+F.Intrinsic.BDF.Load("AUX001","AUX001")
+F.Intrinsic.BDF.Clone("AUX001","Clone")
+F.Intrinsic.BDF.ReadRowCount("AUX001",V.Local.iRowCnt)
+F.Intrinsic.Math.Sub(V.Local.iRowCnt,1,V.Local.iRowCnt)
+F.Intrinsic.Control.For(V.Local.i,0,V.Local.iRowCnt,1)
+	'read each row from the grid and split
+	F.Intrinsic.BDF.ReadRow("AUX001",V.Local.i,V.Local.sReadRow)
+	F.Intrinsic.String.Split(V.Local.sReadRow,"|~|",V.Local.sRR)
+	
+	F.Intrinsic.Control.If(V.Local.sRR(3),=,"Y")
+		F.Intrinsic.String.Build("{0}]=[BC::{1}",V.Local.sRR(3),V.Local.iColor,V.Local.sReady)
+	F.Intrinsic.Control.Else
+		V.Local.sReady.Set(V.Local.sRR(3))
+	F.Intrinsic.Control.EndIf
+	F.Intrinsic.String.Build("{0}|~|{1}|~|{2}|~|{3}|~|{4}|~|{5}|~|{6}|~|{7}|~|{8}{9}",V.Local.sRR(0),V.Local.sRR(1),V.Local.sRR(2),V.Local.sReady,V.Local.sRR(4),V.Local.sRR(5),V.Local.sRR(6),V.Local.sRR(7),V.Local.sRR(8),V.Local.s9,V.Local.sWriteRow)
+	
+	F.Intrinsic.BDF.WriteRow("Clone",V.Local.sWriteRow.Trim)
+F.Intrinsic.Control.Next(V.Local.i)
+F.Intrinsic.BDF.Save("Clone","AUX001")
+Program.Sub.Coloring.End

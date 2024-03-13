@@ -1,0 +1,109 @@
+Program.Sub.Preflight.Start
+V.Global.sWC.Declare(String)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'GCG_5116-WONotReadyUntilNested.g2u
+'Trey S
+'11/12/2018
+'For G D Roberts, Inc. & Fisk Tank Carrier
+'This program is to be used with ARC 4258, Sigma Nest Integration
+'This script will ensure that for WCs that require nesting, the Ready column on the GUI workcenter screen will not turn green until the order has been nested and added to a flex schedule
+
+'Fires on 15955, OLS007 Pre Grid Load Hook
+F.Intrinsic.Control.SelectCase(V.Caller.Hook)
+	F.Intrinsic.Control.CaseAny(15955, 15954)
+		V.Global.sWC.Set(V.Passed.000001.Trim)
+		F.ODBC.Connection!Con.OpenCompanyConnection
+		F.Intrinsic.Control.CallSub(CheckWC)
+		F.Intrinsic.Control.CallSub(CheckJobs)
+		F.ODBC.Connection!Con.Close
+F.Intrinsic.Control.EndSelect
+Program.Sub.Main.End
+
+Program.Sub.CheckWC.Start
+'check if this WC requires nesting
+V.Local.sSQL.Declare(String)
+V.Local.sRet.Declare(String)
+
+'F.Intrinsic.String.Build("select RTRIM(NESTING_INTRFC) as NEST from WORKCENTERS where MACHINE = '{0}'", V.Global.sWC, V.Local.sSQL)
+'F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSQL, V.Local.sRet)
+
+'F.Intrinsic.Control.If(V.Ambient.ExecuteAndReturnEOF, =, True, or, V.Local.sRet.Trim, !=, "Y")
+'	F.ODBC.Connection!Con.Close
+'	F.Intrinsic.Control.End
+'F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.If(V.Global.sWC.Trim, !=, "LS01")
+	F.ODBC.Connection!Con.Close
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+'set the GABVAR so the coloring.gas is run
+V.Passed.GABVAR.Set(1)
+Program.Sub.CheckWC.End
+
+Program.Sub.CheckJobs.Start
+'check if each job has been nested, set the ready flag accordingly
+V.Local.iBDFRows.Declare(Long)
+V.Local.sSQL.Declare(String)
+V.Local.sRet.Declare(String)
+V.Local.iCounter.Declare(Long)
+V.Local.sJob.Declare(String)
+V.Local.sRow.Declare(String)
+V.Local.sReady.Declare(String)
+V.Local.sFilter.Declare(String)
+V.Local.bInString.Declare(Boolean)
+
+F.Intrinsic.BDF.Load("bdfJobs", "AUX001")
+F.Intrinsic.BDF.Clone("bdfJobs", "bdfJobsNew")
+F.Intrinsic.BDF.ReadRowCount("bdfJobs", V.Local.iBDFRows)
+
+F.Intrinsic.Control.If(V.Local.iBDFRows, =, 0)
+	F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Math.Sub(V.Local.iBDFRows, 1, V.Local.iBDFRows)
+
+V.Local.sReady.Set("Y")
+'trying to set the color, but for some reason this doesn't seem to work in a .g2u, maybe BDF.Save or BDF.WriteRow changed.
+'Using GCG_5116_Coloring.gas to do the coloring
+'V.Local.iColor.Declare(Long)
+'V.Local.iColor.Set(65280)
+'F.Intrinsic.String.Build("Y]=[BC::{0}", V.Local.iColor, V.Local.sReady)
+
+'build the filter
+F.Intrinsic.Control.For(V.Local.iCounter, 0, V.Local.iBDFRows, 1)
+	F.Intrinsic.BDF.TextMatrix("bdfJobs", 1, V.Local.iCounter, V.Local.sJob)
+	F.Intrinsic.String.Split(V.Local.sJob, "-", V.Local.sJob)
+	F.Intrinsic.Control.If(V.Local.iCounter, =, 0)
+		F.Intrinsic.String.Build("JOB = '{0}' and SUFFIX = '{1}'", V.Local.sJob(0).Trim, V.Local.sJob(1).Trim, V.Local.sFilter)
+	F.Intrinsic.Control.Else
+		F.Intrinsic.String.Build("{2} or JOB = '{0}' and SUFFIX = '{1}'", V.Local.sJob(0).Trim, V.Local.sJob(1).Trim, V.Local.sFilter, V.Local.sFilter)
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Next(V.Local.iCounter)
+
+F.Intrinsic.String.Build("select RTRIM(JOB) + '-' + RTRIM(SUFFIX) as JOBSUFF from JOB_CT_FLX_SCHD where {0}", V.Local.sFilter, V.Local.sSQL)
+F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSQL, V.Local.sRet)
+
+'if the job is in a flex schedule, it's ready
+F.Intrinsic.Control.For(V.Local.iCounter, 0, V.Local.iBDFRows, 1)
+	F.Intrinsic.BDF.ReadRow("bdfJobs", V.Local.iCounter, V.Local.sRow)
+	F.Intrinsic.String.Split(V.Local.sRow, "|~|", V.Local.sRow)
+	
+	F.Intrinsic.String.IsInString(V.Local.sRet, V.Local.sRow(1).Trim, True, V.Local.bInString)
+	
+	F.Intrinsic.Control.If(V.Local.bInString.Not)
+		V.Local.sRow(3).Set("")
+	F.Intrinsic.Control.Else
+		V.Local.sRow(3).Set(V.Local.sReady.Trim)
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.String.Join(V.Local.sRow, "|~|", V.Local.sRow)
+	F.Intrinsic.BDF.WriteRow("bdfJobsNew", V.Local.sRow.Trim)
+	
+	V.Local.sRow.Redim(0,0)
+	V.Local.sJob.Redim(0,0)
+F.Intrinsic.Control.Next(V.Local.iCounter)
+F.Intrinsic.BDF.Save("bdfJobsNew", "AUX001")
+Program.Sub.CheckJobs.End
